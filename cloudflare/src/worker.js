@@ -102,6 +102,21 @@ export default {
     if (!_isAuthorized(request, env)) {
       return json({ error: "Unauthorized" }, 401);
     }
+    
+    // Rate limiting check
+    const rateLimitResult = await _checkRateLimit(request, env);
+    if (!rateLimitResult.allowed) {
+      return json(
+        { 
+          error: "Rate limit exceeded", 
+          message: "Maximum 10 requests per second allowed",
+          retry_after: rateLimitResult.retryAfter 
+        }, 
+        429,
+        { "Retry-After": String(rateLimitResult.retryAfter) }
+      );
+    }
+    
     if (request.method !== "POST") {
       return json({ error: "Method not allowed" }, 405);
     }
@@ -434,6 +449,64 @@ function _sessionId(request) {
     request.headers.get("x-session-id") ||
     "default"
   );
+}
+
+async function _checkRateLimit(request, env) {
+  const RATE_LIMIT = 10; // requests per second
+  const WINDOW_SIZE = 1; // 1 second window
+  
+  // Get client IP from CF-Connecting-IP header (set by Cloudflare)
+  const clientIP = request.headers.get("CF-Connecting-IP") || 
+                   request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+                   "unknown";
+  
+  const now = Date.now();
+  const windowStart = Math.floor(now / 1000); // Current second
+  const key = `ratelimit:${clientIP}:${windowStart}`;
+  
+  // Use KV if available, otherwise use in-memory fallback
+  let count = 0;
+  if (env.RATE_LIMIT_KV) {
+    const stored = await env.RATE_LIMIT_KV.get(key);
+    count = stored ? parseInt(stored, 10) : 0;
+  } else if (env.SESSION_KV) {
+    // Fallback to SESSION_KV if RATE_LIMIT_KV not configured
+    const stored = await env.SESSION_KV.get(key);
+    count = stored ? parseInt(stored, 10) : 0;
+  } else {
+    // In-memory fallback (will reset between isolates, but better than nothing)
+    if (!globalThis.rateLimitMemory) {
+      globalThis.rateLimitMemory = new Map();
+    }
+    // Clean up old entries
+    const cutoff = windowStart - 2; // Keep last 2 seconds
+    for (const [k, v] of globalThis.rateLimitMemory.entries()) {
+      const timestamp = parseInt(k.split(":")[2], 10);
+      if (timestamp < cutoff) {
+        globalThis.rateLimitMemory.delete(k);
+      }
+    }
+    count = globalThis.rateLimitMemory.get(key) || 0;
+  }
+  
+  if (count >= RATE_LIMIT) {
+    return { 
+      allowed: false, 
+      retryAfter: 1 // Retry after 1 second
+    };
+  }
+  
+  // Increment counter
+  count += 1;
+  if (env.RATE_LIMIT_KV) {
+    await env.RATE_LIMIT_KV.put(key, String(count), { expirationTtl: 2 });
+  } else if (env.SESSION_KV) {
+    await env.SESSION_KV.put(key, String(count), { expirationTtl: 2 });
+  } else {
+    globalThis.rateLimitMemory.set(key, count);
+  }
+  
+  return { allowed: true };
 }
 
 function _isAuthorized(request, env) {
