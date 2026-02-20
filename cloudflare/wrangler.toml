@@ -6,3 +6,10 @@ compatibility_date = "2026-02-20"
 [vars]
 ADO_ORG = ""
 ADO_PROJECT = ""
+
+# Optional: Add RATE_LIMIT_KV binding for persistent rate limiting storage
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "<your-kv-namespace-id>"
+#
+# If not configured, rate limiting falls back to SESSION_KV or in-memory storage

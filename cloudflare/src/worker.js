@@ -102,6 +102,21 @@ export default {
     if (!_isAuthorized(request, env)) {
       return json({ error: "Unauthorized" }, 401);
     }
+    
+    // Rate limiting check
+    const rateLimitResult = await _checkRateLimit(request, env);
+    if (!rateLimitResult.allowed) {
+      return json(
+        { 
+          error: "Rate limit exceeded", 
+          message: "Maximum 10 requests per second allowed",
+          retry_after: rateLimitResult.retryAfter 
+        }, 
+        429,
+        { "Retry-After": String(rateLimitResult.retryAfter) }
+      );
+    }
+    
     if (request.method !== "POST") {
       return json({ error: "Method not allowed" }, 405);
     }
@@ -434,6 +449,72 @@ function _sessionId(request) {
     request.headers.get("x-session-id") ||
     "default"
   );
+}
+
+async function _checkRateLimit(request, env) {
+  const RATE_LIMIT = 10; // requests per second
+  const WINDOW_SIZE_SECONDS = 1; // 1 second window
+  const CLEANUP_RETENTION_SECONDS = 2; // Keep last 2 seconds for in-memory cleanup
+  
+  // Get client IP from CF-Connecting-IP header (set by Cloudflare)
+  const clientIP = request.headers.get("CF-Connecting-IP") || 
+                   request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+                   "unknown";
+  
+  const windowStart = Math.floor(Date.now() / 1000); // Current second
+  const key = `ratelimit:${clientIP}:${windowStart}`;
+  
+  // Use KV if available, otherwise use in-memory fallback
+  let count = 0;
+  if (env.RATE_LIMIT_KV) {
+    const stored = await env.RATE_LIMIT_KV.get(key);
+    count = stored ? parseInt(stored, 10) : 0;
+  } else if (env.SESSION_KV) {
+    // Fallback to SESSION_KV if RATE_LIMIT_KV not configured
+    const stored = await env.SESSION_KV.get(key);
+    count = stored ? parseInt(stored, 10) : 0;
+  } else {
+    // In-memory fallback (will reset between isolates, but better than nothing)
+    if (!globalThis.rateLimitMemory) {
+      globalThis.rateLimitMemory = new Map();
+    }
+    // Clean up old entries
+    const cutoff = windowStart - CLEANUP_RETENTION_SECONDS;
+    for (const [k, v] of globalThis.rateLimitMemory.entries()) {
+      // Extract timestamp safely by splitting on ':' and taking last part
+      const parts = k.split(":");
+      const timestamp = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(timestamp) && timestamp < cutoff) {
+        globalThis.rateLimitMemory.delete(k);
+      }
+    }
+    count = globalThis.rateLimitMemory.get(key) || 0;
+  }
+  
+  if (count >= RATE_LIMIT) {
+    return { 
+      allowed: false, 
+      retryAfter: WINDOW_SIZE_SECONDS
+    };
+  }
+  
+  // Increment counter
+  // Note: This uses a fixed window (not sliding window), so users could
+  // theoretically make 10 requests at the end of one second and 10 at the
+  // start of the next. This is acceptable for soft rate limiting.
+  // Additionally, there's a potential race condition with concurrent requests,
+  // as KV doesn't support atomic increments. A few extra requests may slip
+  // through under load, which is acceptable for soft rate limiting.
+  count += 1;
+  if (env.RATE_LIMIT_KV) {
+    await env.RATE_LIMIT_KV.put(key, String(count), { expirationTtl: WINDOW_SIZE_SECONDS + 1 });
+  } else if (env.SESSION_KV) {
+    await env.SESSION_KV.put(key, String(count), { expirationTtl: WINDOW_SIZE_SECONDS + 1 });
+  } else {
+    globalThis.rateLimitMemory.set(key, count);
+  }
+  
+  return { allowed: true };
 }
 
 function _isAuthorized(request, env) {

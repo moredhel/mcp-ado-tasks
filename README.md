@@ -77,6 +77,30 @@ The Worker accepts either:
 
 > If you skip KV binding, session state falls back to in-memory storage and can reset between Worker isolates.
 
+### Rate Limiting
+
+The Worker implements rate limiting at **10 requests per second per source IP address**. When the limit is exceeded, the server returns a `429 Too Many Requests` response with a `Retry-After` header.
+
+Rate limiting uses KV storage for persistence:
+- If `RATE_LIMIT_KV` is configured, it's used for rate limiting counters
+- Otherwise, falls back to `SESSION_KV` if available
+- Final fallback is in-memory storage (may reset between Worker isolates)
+
+To configure a dedicated rate limiting KV namespace:
+
+```bash
+cd cloudflare
+wrangler kv namespace create RATE_LIMIT_KV
+```
+
+Then add to `cloudflare/wrangler.toml`:
+
+```toml
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "<your-kv-namespace-id>"
+```
+
 ### GitHub Actions CI/CD deployment
 
 This repo includes `.github/workflows/deploy-cloudflare-worker.yml` to deploy on pushes to `main` (for `cloudflare/**` changes) and via manual dispatch.
