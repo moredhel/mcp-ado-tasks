@@ -20,37 +20,15 @@ At the start of a session Claude calls `set_story` with your User Story ID. It t
 
 ## Prerequisites
 
-- Python 3.10+
+- Node.js 18+
 - An Azure DevOps organisation with a project
 - A Personal Access Token (PAT) with **Work Items (Read & Write)** scope
 
 ---
 
-## Installation
-
-```bash
-pip install mcp
-```
-
-Then register the server with Claude Code at user scope (available in every repo):
-
-```bash
-claude mcp add --scope user tasks -- python3 /path/to/server.py
-```
-
-Set these environment variables (e.g. in your shell profile):
-
-```bash
-export ADO_PAT="your-pat-here"
-export ADO_ORG="your-org"
-export ADO_PROJECT="your-project"
-```
-
----
-
 ## Deploy to Cloudflare Workers (with API key auth)
 
-This repo includes a Worker implementation at `cloudflare/src/worker.js` that exposes the same MCP tools over HTTP at `/mcp`.
+This repo includes a Worker implementation at `cloudflare/src/worker.js` that exposes MCP tools over HTTP at `/mcp`.
 
 1. Install Wrangler:
 
@@ -114,33 +92,17 @@ Configure these repository **secrets** before enabling the workflow:
 
 ---
 
-## CLAUDE.md snippet
+## Task Management Guidelines
 
-Add this to your project's `CLAUDE.md` (or `~/.claude/CLAUDE.md` for all projects) so Claude knows to use the ADO tools:
+This repository includes a `CLAUDE.md` file that provides guidelines for Claude on how to use the ADO task management tools. The file is automatically picked up by Claude when working in this repository.
 
-```markdown
-## Task Management
+Key points:
+- Always use the MCP task tools (`mcp__tasks__*`) instead of built-in task tools
+- Call `set_story` at the start of each session with the User Story ID
+- Call `story_resolve` when implementation work is complete
+- Create tasks via `task_create`, update via `task_update`, list via `task_list` and `task_list_mine`
 
-This project tracks tasks in Azure DevOps. Always use the MCP task tools, never the built-in TaskCreate/TaskUpdate/TaskList/TaskGet tools.
-
-At the start of each work session:
-1. The user will provide a User Story ID (e.g. "#4321")
-2. Call `mcp__tasks__set_story(story_id="4321")` to set the context — this automatically moves the story to Active
-3. Confirm the story title back to the user before proceeding
-
-At the end of each work session (when implementation is complete):
-- Call `mcp__tasks__story_resolve` to move the story to Resolved
-
-When breaking down work:
-- Create one ADO Task per logical unit of work via `mcp__tasks__task_create`
-- Wire up dependencies with `mcp__tasks__task_link` before starting work
-- Update task status via `mcp__tasks__task_update` as work progresses
-- Use `mcp__tasks__task_list` instead of TaskList
-- Use `mcp__tasks__task_get` instead of TaskGet
-- Use `mcp__tasks__task_list_mine` to see all tasks assigned to you across the project
-
-Do NOT use: TaskCreate, TaskUpdate, TaskList, TaskGet, TaskDelete — use the ADO MCP equivalents above.
-```
+See `CLAUDE.md` for complete details.
 
 ---
 
@@ -170,7 +132,7 @@ Do NOT use: TaskCreate, TaskUpdate, TaskList, TaskGet, TaskDelete — use the AD
 
 ## Session state
 
-The active story ID is persisted to `~/.local/share/life-manager/session.json` so it survives MCP server restarts within a session.
+When using Cloudflare Workers with KV namespace binding, the active story ID is persisted in KV storage. Without KV, session state falls back to in-memory storage and may reset between Worker isolates.
 
 ---
 
