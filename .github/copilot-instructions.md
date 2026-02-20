@@ -17,7 +17,7 @@ This is an MCP (Model Context Protocol) server that provides Claude Code with pe
 - **Runtime**: Cloudflare Workers (V8 JavaScript runtime with Node.js API compatibility)
 - **Protocol**: MCP (Model Context Protocol)
 - **External API**: Azure DevOps REST API
-- **Storage**: Cloudflare KV (optional, for session persistence)
+- **Storage**: Cloudflare KV (optional, for session state persistence)
 
 ## Task Management
 
@@ -69,9 +69,6 @@ The Worker API accepts authentication via:
 
 Both are validated against the `MCP_API_KEY` secret.
 
-### Rate Limiting
-The Worker implements a 10 req/sec rate limit per source IP using a sliding window with KV storage.
-
 ### Session Management
 - With KV namespace binding: session state persists in KV storage
 - Without KV: session state falls back to in-memory storage (may reset between isolates)
@@ -86,7 +83,7 @@ The Worker implements a 10 req/sec rate limit per source IP using a sliding wind
 | `task_list` | List all Tasks under the active story |
 | `task_get` | Get full details of a single Task |
 | `task_link` | Create predecessor/successor dependency between Tasks |
-| `task_list_mine` | List all Tasks assigned to @Me (filters for "To Do" or "Active" states only) |
+| `task_list_mine` | List all Tasks assigned to @Me (filters for ADO states "To Do" or "Active" only) |
 | `story_resolve` | Mark the active User Story as Resolved |
 
 ## Making Changes
