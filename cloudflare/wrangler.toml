@@ -1,0 +1,8 @@
+name = "ado-tasks-mcp"
+main = "src/worker.js"
+compatibility_date = "2026-02-20"
+
+# Set ADO_ORG and ADO_PROJECT via `wrangler.toml` vars or environment.
+[vars]
+ADO_ORG = ""
+ADO_PROJECT = ""

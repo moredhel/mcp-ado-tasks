@@ -48,6 +48,72 @@ export ADO_PROJECT="your-project"
 
 ---
 
+## Deploy to Cloudflare Workers (with API key auth)
+
+This repo includes a Worker implementation at `cloudflare/src/worker.js` that exposes the same MCP tools over HTTP at `/mcp`.
+
+1. Install Wrangler:
+
+```bash
+npm install -g wrangler
+```
+
+2. Configure and deploy:
+
+```bash
+cd cloudflare
+wrangler secret put ADO_PAT
+wrangler secret put MCP_API_KEY
+wrangler deploy
+```
+
+Set `ADO_ORG` and `ADO_PROJECT` in `cloudflare/wrangler.toml` under `[vars]` (or as Worker environment variables).
+
+3. (Optional, recommended) persist session state in KV:
+
+```bash
+cd cloudflare
+wrangler kv namespace create SESSION_KV
+```
+
+Then add this to `cloudflare/wrangler.toml` with your namespace ID:
+
+```toml
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "<your-kv-namespace-id>"
+```
+
+4. Call the MCP endpoint with an API key:
+
+```bash
+curl https://<your-worker>.workers.dev/mcp \
+  -H "content-type: application/json" \
+  -H "x-api-key: <your-api-key>" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The Worker accepts either:
+- `x-api-key: <MCP_API_KEY>`
+- `Authorization: Bearer <MCP_API_KEY>`
+
+> If you skip KV binding, session state falls back to in-memory storage and can reset between Worker isolates.
+
+### GitHub Actions CI/CD deployment
+
+This repo includes `.github/workflows/deploy-cloudflare-worker.yml` to deploy on pushes to `main` (for `cloudflare/**` changes) and via manual dispatch.
+
+Configure these repository **secrets** before enabling the workflow:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `ADO_PAT`
+- `MCP_API_KEY`
+- `ADO_ORG`
+- `ADO_PROJECT`
+
+---
+
 ## CLAUDE.md snippet
 
 Add this to your project's `CLAUDE.md` (or `~/.claude/CLAUDE.md` for all projects) so Claude knows to use the ADO tools:
