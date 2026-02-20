@@ -440,7 +440,7 @@ function _isAuthorized(request, env) {
   if (!env.MCP_API_KEY) return false;
   const xApiKey = request.headers.get("x-api-key");
   const auth = request.headers.get("authorization") || "";
-  const bearer = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : null;
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : null; // 'Bearer ' is 7 chars
   return xApiKey === env.MCP_API_KEY || bearer === env.MCP_API_KEY;
 }
 
