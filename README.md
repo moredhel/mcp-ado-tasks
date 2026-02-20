@@ -1,8 +1,11 @@
 # ado-tasks-mcp
 
-An [MCP](https://modelcontextprotocol.io) server that gives Claude Code persistent, auditable task tracking via **Azure DevOps Work Items**.
+An [MCP](https://modelcontextprotocol.io) server that lets Claude Code manage real **Azure DevOps Work Items** instead of temporary in-session todos.
 
-Claude's built-in task tools vanish at the end of a session. This server replaces them with ADO Tasks so work is tracked across sessions and visible to your whole team.
+If you're using Claude for implementation work, this server keeps task tracking persistent and team-visible:
+- set a User Story with `set_story`
+- let Claude create/update child Tasks as it works
+- keep a full audit trail in ADO across sessions
 
 ---
 
