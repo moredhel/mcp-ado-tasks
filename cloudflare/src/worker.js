@@ -453,15 +453,14 @@ function _sessionId(request) {
 
 async function _checkRateLimit(request, env) {
   const RATE_LIMIT = 10; // requests per second
-  const WINDOW_SIZE = 1; // 1 second window
+  const WINDOW_SIZE_SECONDS = 1; // 1 second window
   
   // Get client IP from CF-Connecting-IP header (set by Cloudflare)
   const clientIP = request.headers.get("CF-Connecting-IP") || 
                    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
                    "unknown";
   
-  const now = Date.now();
-  const windowStart = Math.floor(now / 1000); // Current second
+  const windowStart = Math.floor(Date.now() / 1000); // Current second
   const key = `ratelimit:${clientIP}:${windowStart}`;
   
   // Use KV if available, otherwise use in-memory fallback
@@ -478,11 +477,13 @@ async function _checkRateLimit(request, env) {
     if (!globalThis.rateLimitMemory) {
       globalThis.rateLimitMemory = new Map();
     }
-    // Clean up old entries
-    const cutoff = windowStart - 2; // Keep last 2 seconds
+    // Clean up old entries (keep last 2 seconds)
+    const cutoff = windowStart - 2;
     for (const [k, v] of globalThis.rateLimitMemory.entries()) {
-      const timestamp = parseInt(k.split(":")[2], 10);
-      if (timestamp < cutoff) {
+      // Extract timestamp safely by splitting on ':' and taking last part
+      const parts = k.split(":");
+      const timestamp = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(timestamp) && timestamp < cutoff) {
         globalThis.rateLimitMemory.delete(k);
       }
     }
@@ -492,16 +493,19 @@ async function _checkRateLimit(request, env) {
   if (count >= RATE_LIMIT) {
     return { 
       allowed: false, 
-      retryAfter: 1 // Retry after 1 second
+      retryAfter: WINDOW_SIZE_SECONDS
     };
   }
   
   // Increment counter
+  // Note: There's a potential race condition with concurrent requests,
+  // but KV doesn't support atomic increments. This is acceptable for
+  // soft rate limiting; a few extra requests may slip through under load.
   count += 1;
   if (env.RATE_LIMIT_KV) {
-    await env.RATE_LIMIT_KV.put(key, String(count), { expirationTtl: 2 });
+    await env.RATE_LIMIT_KV.put(key, String(count), { expirationTtl: WINDOW_SIZE_SECONDS + 1 });
   } else if (env.SESSION_KV) {
-    await env.SESSION_KV.put(key, String(count), { expirationTtl: 2 });
+    await env.SESSION_KV.put(key, String(count), { expirationTtl: WINDOW_SIZE_SECONDS + 1 });
   } else {
     globalThis.rateLimitMemory.set(key, count);
   }
