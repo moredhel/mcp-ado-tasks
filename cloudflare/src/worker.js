@@ -454,6 +454,7 @@ function _sessionId(request) {
 async function _checkRateLimit(request, env) {
   const RATE_LIMIT = 10; // requests per second
   const WINDOW_SIZE_SECONDS = 1; // 1 second window
+  const CLEANUP_RETENTION_SECONDS = 2; // Keep last 2 seconds for in-memory cleanup
   
   // Get client IP from CF-Connecting-IP header (set by Cloudflare)
   const clientIP = request.headers.get("CF-Connecting-IP") || 
@@ -477,8 +478,8 @@ async function _checkRateLimit(request, env) {
     if (!globalThis.rateLimitMemory) {
       globalThis.rateLimitMemory = new Map();
     }
-    // Clean up old entries (keep last 2 seconds)
-    const cutoff = windowStart - 2;
+    // Clean up old entries
+    const cutoff = windowStart - CLEANUP_RETENTION_SECONDS;
     for (const [k, v] of globalThis.rateLimitMemory.entries()) {
       // Extract timestamp safely by splitting on ':' and taking last part
       const parts = k.split(":");
@@ -498,9 +499,12 @@ async function _checkRateLimit(request, env) {
   }
   
   // Increment counter
-  // Note: There's a potential race condition with concurrent requests,
-  // but KV doesn't support atomic increments. This is acceptable for
-  // soft rate limiting; a few extra requests may slip through under load.
+  // Note: This uses a fixed window (not sliding window), so users could
+  // theoretically make 10 requests at the end of one second and 10 at the
+  // start of the next. This is acceptable for soft rate limiting.
+  // Additionally, there's a potential race condition with concurrent requests,
+  // as KV doesn't support atomic increments. A few extra requests may slip
+  // through under load, which is acceptable for soft rate limiting.
   count += 1;
   if (env.RATE_LIMIT_KV) {
     await env.RATE_LIMIT_KV.put(key, String(count), { expirationTtl: WINDOW_SIZE_SECONDS + 1 });
