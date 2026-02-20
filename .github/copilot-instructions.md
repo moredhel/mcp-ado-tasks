@@ -14,7 +14,7 @@ This is an MCP (Model Context Protocol) server that provides Claude Code with pe
 
 ## Technology Stack
 
-- **Runtime**: Cloudflare Workers (Node.js environment)
+- **Runtime**: Cloudflare Workers (V8 JavaScript runtime with Node.js API compatibility)
 - **Protocol**: MCP (Model Context Protocol)
 - **External API**: Azure DevOps REST API
 - **Storage**: Cloudflare KV (optional, for session persistence)
