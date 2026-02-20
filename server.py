@@ -395,7 +395,7 @@ SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo], [System
 FROM WorkItems
 WHERE [System.WorkItemType] = 'Task'
   AND [System.AssignedTo] = @Me
-  AND [System.State] <> 'Removed'
+  AND ([System.State] = 'To Do' OR [System.State] = 'Active')
 ORDER BY [System.ChangedDate] DESC
 """
     }
